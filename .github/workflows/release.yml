@@ -1,0 +1,69 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - '**'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created || steps.post-merge-release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name || steps.post-merge-release.outputs.tag_name }}
+    steps:
+      # First pass: creates a release PR if there are releasable commits,
+      # or creates a GitHub release if a release PR was already merged.
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: ${{ github.ref_name != 'main' }}
+
+      # Auto-merge the release PR so no manual intervention is needed.
+      - name: Auto-merge release PR
+        if: ${{ steps.release.outputs.prs_created == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge "${{ fromJSON(steps.release.outputs.pr).number }}" \
+            --squash --repo "${{ github.repository }}"
+
+      # Second pass: now that the PR is merged, release-please detects it
+      # and creates the GitHub release + tag.
+      - uses: googleapis/release-please-action@v4
+        id: post-merge-release
+        if: ${{ steps.release.outputs.prs_created == 'true' }}
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: ${{ github.ref_name != 'main' }}
+
+  publish:
+    name: Build & publish firmware
+    needs: release
+    if: ${{ needs.release.outputs.release_created }}
+    runs-on: ubuntu-24.04-arm
+    container: rust:1-bookworm
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.tag_name }}
+
+      - name: Add Cortex-M7 target
+        run: rustup target add thumbv7em-none-eabihf
+
+      - name: Build firmware
+        run: cargo build --release
+
+      - name: Upload firmware to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.release.outputs.tag_name }}
+          files: target/thumbv7em-none-eabihf/release/moto
