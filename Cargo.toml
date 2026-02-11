@@ -1,6 +1,6 @@
 [package]
 name = "moto"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Bare-metal Rust firmware for Teensy 4.1 (i.MX RT1062 / Cortex-M7), simulated in Renode"
 
