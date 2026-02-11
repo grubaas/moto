@@ -1,0 +1,18 @@
+services:
+  # Build the firmware and run it in the Renode simulator (headless).
+  # Usage: docker compose up --build firmware
+  firmware:
+    build: .
+
+  # Drop into a shell inside the build environment (for debugging).
+  # Usage: docker compose run --rm builder
+  builder:
+    build:
+      context: .
+      target: builder
+    working_dir: /app
+    volumes:
+      - .:/app
+    entrypoint: ["/bin/bash"]
+    stdin_open: true
+    tty: true

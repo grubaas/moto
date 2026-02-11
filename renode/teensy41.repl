@@ -1,0 +1,30 @@
+// Teensy 4.1 (i.MX RT1062) — Renode Platform Description
+//
+// Cortex-M7 core with ITCM, DTCM, OCRAM, and a UART peripheral.
+// The UART is an NS16550-compatible model mapped at the LPUART1 address
+// region of the i.MX RT1062 (0x4018_4000).
+
+cpu: CPU.CortexM @ sysbus
+    cpuType: "cortex-m7"
+    nvic: nvic
+
+nvic: IRQControllers.NVIC @ sysbus 0xE000E000
+    priorityMask: 0xF0
+    systickFrequency: 600000000
+    -> cpu@0
+
+// ITCM — firmware code is loaded here
+itcm: Memory.MappedMemory @ sysbus 0x00000000
+    size: 0x80000
+
+// DTCM — stack and .data / .bss
+dtcm: Memory.MappedMemory @ sysbus 0x20000000
+    size: 0x80000
+
+// OCRAM — extra SRAM (1 MB)
+ocram: Memory.MappedMemory @ sysbus 0x20200000
+    size: 0x100000
+
+// UART (NS16550-compatible) at LPUART1 address
+uart0: UART.NS16550 @ sysbus 0x40184000
+    -> nvic@20

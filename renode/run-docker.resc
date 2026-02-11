@@ -1,0 +1,20 @@
+# Headless Renode script — used inside Docker to run the firmware,
+# capture UART output, and exit automatically.
+#
+# Paths are absolute because this script runs inside the Docker container
+# where the firmware is placed at /app/firmware.elf.
+
+using sysbus
+
+mach create "teensy41"
+machine LoadPlatformDescription @/app/renode/teensy41.repl
+
+sysbus LoadELF @/app/firmware.elf
+
+showAnalyzer uart0
+
+# Run 100 ms of virtual time — more than enough for "Hello, world".
+# RunFor starts the emulation, runs for the given duration, then pauses.
+emulation RunFor "00:00:00.100"
+
+quit

@@ -1,0 +1,65 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build firmware
+    runs-on: ubuntu-24.04-arm
+    container: rust:1-bookworm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add Cortex-M7 target
+        run: rustup target add thumbv7em-none-eabihf
+
+      - name: Build firmware
+        run: cargo build --release
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: target/thumbv7em-none-eabihf/release/moto
+
+  simulate:
+    name: Run in Renode
+    needs: build
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Renode (native arm64 portable .NET build)
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+            libicu74 libssl3t64 wget
+          wget -qO /tmp/renode.tar.gz \
+            https://builds.renode.io/renode-latest.linux-arm64-portable-dotnet.tar.gz
+          sudo mkdir -p /opt/renode
+          sudo tar -xzf /tmp/renode.tar.gz -C /opt/renode --strip-components=1
+          rm /tmp/renode.tar.gz
+          echo "/opt/renode" >> "$GITHUB_PATH"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware
+
+      - name: Simulate firmware and verify UART output
+        run: |
+          renode --disable-xwt --console \
+            -e '$bin = @moto' \
+            -e 'include @renode/teensy41.resc' \
+            -e 'emulation RunFor "00:00:00.100"' \
+            -e 'quit' \
+            2>&1 | tee output.txt
+          echo "--- Renode output ---"
+          cat output.txt
+          echo "--- Checking for expected message ---"
+          grep -q "Hello, world" output.txt
+          echo "PASS: Found expected UART output."
