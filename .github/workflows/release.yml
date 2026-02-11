@@ -44,6 +44,17 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           target-branch: ${{ github.ref_name }}
 
+      # Mark the release as a prerelease when not on main.
+      - name: Mark as prerelease
+        if: >-
+          github.ref_name != 'main' &&
+          (steps.release.outputs.release_created == 'true' || steps.post-merge-release.outputs.release_created == 'true')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.release.outputs.tag_name || steps.post-merge-release.outputs.tag_name }}"
+          gh release edit "$TAG" --prerelease --repo "${{ github.repository }}"
+
   publish:
     name: Build & publish firmware
     needs: release
