@@ -24,7 +24,6 @@ jobs:
         id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          prerelease: ${{ github.ref_name != 'main' }}
 
       # Auto-merge the release PR so no manual intervention is needed.
       - name: Auto-merge release PR
@@ -42,7 +41,6 @@ jobs:
         if: ${{ steps.release.outputs.prs_created == 'true' }}
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          prerelease: ${{ github.ref_name != 'main' }}
 
   publish:
     name: Build & publish firmware
