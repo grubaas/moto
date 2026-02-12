@@ -3,13 +3,14 @@ name: Release
 on:
   push:
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   release:
     name: Release
     runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.release.outputs.version }}
     steps:
@@ -40,27 +41,35 @@ jobs:
             echo "version=v${VERSION}" >> "$GITHUB_OUTPUT"
           fi
 
-  publish:
-    name: Build & publish firmware
-    needs: release
-    if: needs.release.outputs.version != ''
+  build:
+    name: Build firmware
     runs-on: ubuntu-24.04-arm
     container: rust:1-bookworm
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.release.outputs.version }}
           fetch-depth: 1
-
       - name: Add Cortex-M7 target
         run: rustup target add thumbv7em-none-eabihf
-
       - name: Build firmware
         run: cargo build --release
+      - uses: actions/upload-artifact@v6
+        with:
+          name: firmware
+          path: target/thumbv7em-none-eabihf/release/moto
 
+  publish:
+    name: Publish firmware
+    needs: [release, build]
+    if: needs.release.outputs.version != ''
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          name: firmware
       - name: Upload firmware to release
-        run: gh release upload ${{ needs.release.outputs.version }} target/thumbv7em-none-eabihf/release/moto
+        run: gh release upload ${{ needs.release.outputs.version }} moto
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
