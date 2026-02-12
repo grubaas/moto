@@ -20,8 +20,9 @@ sram: Memory.MappedMemory @ sysbus 0x40800000
 // UART (NS16550-compatible) at UART0 peripheral address
 uart0: UART.NS16550 @ sysbus 0x60000000
 
-// GPIO output register stub — the firmware writes LED PWM state here.
-// Backed by a 4 KB MappedMemory block so that read/write accesses from
-// the software PWM loop succeed without bus faults.
-gpio: Memory.MappedMemory @ sysbus 0x60091000
-    size: 0x1000
+// GPIO output register — ArrayMemory is used instead of MappedMemory so
+// that accesses go through the C# bus layer.  This allows a system-bus
+// write hook (installed in the .resc script) to intercept every write
+// and compute the time-averaged duty cycle (perceived LED brightness).
+gpio: Memory.ArrayMemory @ sysbus 0x60091000
+    size: 0x4

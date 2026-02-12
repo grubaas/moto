@@ -76,8 +76,9 @@ fn mtime() -> u64 {
 // GPIO — simple MMIO output register for the LED.
 //
 // On real ESP32-C5 silicon the GPIO_OUT register lives at 0x6009_1000.
-// In Renode we back this address with a small MappedMemory block so that
-// read/write accesses succeed without bus faults.
+// In Renode we back this address with ArrayMemory (C#-level) so that a
+// system-bus write hook can intercept every access and measure the
+// time-averaged duty cycle (perceived LED brightness).
 // ---------------------------------------------------------------------------
 
 const GPIO_OUT: *mut u32 = 0x6009_1000 as *mut u32;
