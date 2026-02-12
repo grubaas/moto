@@ -1,7 +1,7 @@
 # moto
 
-Bare-metal Rust firmware for a **Teensy 4.1**-class microcontroller
-(NXP i.MX RT1062 — ARM Cortex-M7), compiled with Docker and simulated in
+Bare-metal Rust firmware for the **ESP32-C5** microcontroller
+(Espressif — RISC-V RV32IMAC), compiled with Docker and simulated in
 [Renode](https://renode.io).
 
 ## Project structure
@@ -10,16 +10,16 @@ Bare-metal Rust firmware for a **Teensy 4.1**-class microcontroller
 moto/
 ├── .cargo/config.toml        # Rust cross-compilation target & flags
 ├── .github/workflows/
-│   └── build.yml             # GitHub Actions CI — build + Renode test
+│   └── ci.yml                # GitHub Actions CI — build + Renode test
 ├── src/
 │   └── main.rs               # Bare-metal "Hello, world!" firmware
 ├── renode/
-│   ├── teensy41.repl         # Renode platform description (Cortex-M7 + UART)
-│   ├── teensy41.resc         # Renode script — local / interactive use
+│   ├── esp32c5.repl          # Renode platform description (RISC-V + UART)
+│   ├── esp32c5.resc          # Renode script — local / interactive use
 │   └── run-docker.resc       # Renode script — headless Docker execution
 ├── Cargo.toml                # Rust package manifest
 ├── build.rs                  # Build script (copies memory.x to OUT_DIR)
-├── memory.x                  # Linker script (ITCM + DTCM memory layout)
+├── memory.x                  # Linker script (HP SRAM memory layout)
 ├── Dockerfile                # Multi-stage: Rust build → Renode runner
 ├── docker-compose.yml        # Convenience services (firmware, builder)
 └── README.md
@@ -36,7 +36,7 @@ docker run --rm moto
 You should see Renode output containing:
 
 ```
-Hello, world! Welcome to moto on Teensy 4.1 (i.MX RT1062)
+Hello, world! Welcome to moto on ESP32-C5 (RISC-V)
 ```
 
 ### Other Docker targets
@@ -58,9 +58,9 @@ docker compose run --rm builder         # interactive builder shell
 
 ### Prerequisites
 
-1. **Rust** with the Cortex-M7 target:
+1. **Rust** with the RISC-V target:
    ```bash
-   rustup target add thumbv7em-none-eabihf
+   rustup target add riscv32imac-unknown-none-elf
    ```
 2. **Renode** (for simulation):
    - macOS: `brew install renode`
@@ -73,7 +73,7 @@ docker compose run --rm builder         # interactive builder shell
 cargo build --release
 
 # Open Renode with the firmware loaded (interactive GUI):
-renode renode/teensy41.resc
+renode renode/esp32c5.resc
 # Then type `start` in the Renode monitor window.
 ```
 
@@ -81,33 +81,33 @@ renode renode/teensy41.resc
 
 ### Hardware target
 
-The firmware targets the **NXP i.MX RT1062** SoC found on the Teensy 4.1:
+The firmware targets the **Espressif ESP32-C5** SoC:
 
-| Feature       | Detail                           |
-|---------------|----------------------------------|
-| Core          | ARM Cortex-M7 @ 600 MHz         |
-| ITCM          | 512 KB (code execution)          |
-| DTCM          | 512 KB (stack + data)            |
-| OCRAM         | 1 MB (extra SRAM)               |
-| UART          | LPUART1 @ `0x4018_4000`         |
+| Feature       | Detail                                     |
+|---------------|--------------------------------------------|
+| Core          | RISC-V RV32IMAC @ up to 240 MHz           |
+| HP SRAM       | 384 KB (unified instruction + data)        |
+| LP SRAM       | 16 KB (low-power domain)                   |
+| UART          | UART0 @ `0x6000_0000`                     |
+| Connectivity  | Wi-Fi 6 (dual-band), BLE 5, 802.15.4      |
 
 ### Renode simulation
 
 [Renode](https://renode.io) is an open-source embedded systems simulator by
-Antmicro. The platform is defined in `renode/teensy41.repl` with:
+Antmicro. The platform is defined in `renode/esp32c5.repl` with:
 
-- A Cortex-M7 CPU
-- Memory regions matching the i.MX RT1062 (ITCM, DTCM, OCRAM)
-- An NS16550-compatible UART at the LPUART1 address
+- A RISC-V RV32IMAC CPU
+- 384 KB of HP SRAM at the ESP32-C5 address
+- An NS16550-compatible UART at the UART0 peripheral address
 
 The firmware writes "Hello, world!" over the UART, which Renode displays on
 the console (headless) or in an analyzer window (GUI mode).
 
 ### CI pipeline
 
-The GitHub Actions workflow (`.github/workflows/build.yml`):
+The GitHub Actions workflow (`.github/workflows/ci.yml`):
 
-1. Builds the Docker image (compiles the firmware inside the container)
+1. Builds the firmware for the `riscv32imac-unknown-none-elf` target
 2. Runs the firmware in Renode (headless)
 3. Asserts that the UART output contains the expected "Hello, world" message
 

@@ -49,14 +49,14 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
-      - name: Add Cortex-M7 target
-        run: rustup target add thumbv7em-none-eabihf
+      - name: Add RISC-V target
+        run: rustup target add riscv32imac-unknown-none-elf
       - name: Build firmware
         run: cargo build --release
       - uses: actions/upload-artifact@v6
         with:
           name: firmware
-          path: target/thumbv7em-none-eabihf/release/moto
+          path: target/riscv32imac-unknown-none-elf/release/moto
 
   simulate:
     name: Run in Renode
@@ -81,7 +81,7 @@ jobs:
         run: |
           renode --disable-xwt --console \
             -e '$bin = @moto' \
-            -e 'include @renode/teensy41.resc' \
+            -e 'include @renode/esp32c5.resc' \
             -e 'emulation RunFor "00:00:00.100"' \
             -e 'quit' \
             2>&1 | tee output.txt
