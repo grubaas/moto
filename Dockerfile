@@ -1,15 +1,15 @@
 # =============================================================================
 # Multi-stage Dockerfile for moto firmware
 #
-#   Stage 1 (builder) — compiles Rust firmware for thumbv7em-none-eabihf
+#   Stage 1 (builder) — compiles Rust firmware for riscv32imac-unknown-none-elf
 #   Stage 2 (runner)  — runs the ELF in the Renode simulator (headless)
 # =============================================================================
 
 # ---- Build Stage ------------------------------------------------------------
 FROM rust:1-bookworm AS builder
 
-# Cross-compilation target for Cortex-M7 with hardware FPU
-RUN rustup target add thumbv7em-none-eabihf
+# Cross-compilation target for RISC-V RV32IMAC (ESP32-C5)
+RUN rustup target add riscv32imac-unknown-none-elf
 
 WORKDIR /app
 
@@ -20,7 +20,7 @@ COPY build.rs memory.x ./
 
 # 2. Create a minimal dummy source so `cargo build` downloads & compiles deps
 RUN mkdir src && \
-    printf '#![no_std]\n#![no_main]\nuse panic_halt as _;\n#[cortex_m_rt::entry]\nfn main() -> ! { loop {} }\n' \
+    printf '#![no_std]\n#![no_main]\nextern crate panic_halt;\n#[riscv_rt::entry]\nfn main() -> ! { loop {} }\n' \
     > src/main.rs
 
 RUN cargo build --release
@@ -57,7 +57,7 @@ ENV PATH="/opt/renode:${PATH}"
 WORKDIR /app
 
 # Copy the compiled firmware ELF
-COPY --from=builder /app/target/thumbv7em-none-eabihf/release/moto /app/firmware.elf
+COPY --from=builder /app/target/riscv32imac-unknown-none-elf/release/moto /app/firmware.elf
 
 # Copy Renode platform description & scripts
 COPY renode/ /app/renode/

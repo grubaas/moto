@@ -1,13 +1,18 @@
-/* Linker script for i.MX RT1062 (Teensy 4.1) — Renode simulation layout
+/* Linker script for ESP32-C5 — Renode simulation layout
  *
- * FLASH = ITCM (Instruction Tightly Coupled Memory) — code executes here
- * RAM   = DTCM (Data Tightly Coupled Memory)         — stack + data live here
- *
- * On real hardware the boot ROM copies from external flash (0x6000_0000)
- * into ITCM.  For Renode simulation we load the ELF directly into ITCM.
+ * The ESP32-C5 has 384 KB of unified HP SRAM at 0x4080_0000 – 0x4086_0000.
+ * For simulation we split it into a code region (FLASH) and a data region (RAM).
+ * Renode loads the ELF directly into SRAM — no flash or boot ROM is involved.
  */
 MEMORY
 {
-    FLASH : ORIGIN = 0x00000000, LENGTH = 512K
-    RAM   : ORIGIN = 0x20000000, LENGTH = 512K
+    FLASH : ORIGIN = 0x40800000, LENGTH = 256K
+    RAM   : ORIGIN = 0x40840000, LENGTH = 128K
 }
+
+REGION_ALIAS("REGION_TEXT",   FLASH);
+REGION_ALIAS("REGION_RODATA", FLASH);
+REGION_ALIAS("REGION_DATA",   RAM);
+REGION_ALIAS("REGION_BSS",    RAM);
+REGION_ALIAS("REGION_HEAP",   RAM);
+REGION_ALIAS("REGION_STACK",  RAM);

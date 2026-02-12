@@ -1,0 +1,21 @@
+// ESP32-C5 — Renode Platform Description
+//
+// RISC-V RV32IMAC core with HP SRAM and a UART peripheral.
+// The UART is an NS16550-compatible model mapped at the ESP32-C5
+// UART0 peripheral address (0x6000_0000).
+
+cpu: CPU.RiscV32 @ sysbus
+    cpuType: "rv32imac_zicsr_zifencei"
+    privilegedArchitecture: PrivilegedArchitecture.Priv1_10
+    timeProvider: clint
+
+clint: IRQControllers.CoreLevelInterruptor @ sysbus 0x02000000
+    frequency: 160000000
+    [0, 1] -> cpu@[3, 7]
+
+// HP SRAM — unified instruction and data memory (384 KB)
+sram: Memory.MappedMemory @ sysbus 0x40800000
+    size: 0x60000
+
+// UART (NS16550-compatible) at UART0 peripheral address
+uart0: UART.NS16550 @ sysbus 0x60000000

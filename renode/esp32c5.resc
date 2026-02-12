@@ -1,0 +1,20 @@
+# ESP32-C5 (RISC-V) — Renode Script (interactive / local use)
+#
+# Usage (from the project root):
+#   renode renode/esp32c5.resc          — opens Renode GUI
+#   renode --console renode/esp32c5.resc — console-only mode
+#
+# Then type `start` in the Renode monitor to begin execution.
+
+using sysbus
+
+# Firmware ELF path — override before including this script if needed:
+#   $bin=@/some/other/path.elf
+$bin ?= @../target/riscv32imac-unknown-none-elf/release/moto
+
+mach create "esp32c5"
+machine LoadPlatformDescription @renode/esp32c5.repl
+
+sysbus LoadELF $bin
+
+showAnalyzer uart0

@@ -6,8 +6,8 @@
 
 using sysbus
 
-mach create "teensy41"
-machine LoadPlatformDescription @/app/renode/teensy41.repl
+mach create "esp32c5"
+machine LoadPlatformDescription @/app/renode/esp32c5.repl
 
 sysbus LoadELF @/app/firmware.elf
 
