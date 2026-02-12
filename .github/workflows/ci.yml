@@ -77,19 +77,29 @@ jobs:
       - uses: actions/download-artifact@v6
         with:
           name: firmware
-      - name: Simulate firmware and verify UART output
+      - name: Simulate firmware and verify breathing LED
         run: |
           renode --disable-xwt --console \
             -e '$bin = @moto' \
             -e 'include @renode/esp32c5.resc' \
-            -e 'emulation RunFor "00:00:00.100"' \
+            -e 'emulation RunFor "00:00:00.201"' \
+            -e 'log "GPIO_AT_PEAK"' \
+            -e 'sysbus ReadDoubleWord 0x60091000' \
+            -e 'emulation RunFor "00:00:00.200"' \
+            -e 'log "GPIO_AT_TROUGH"' \
+            -e 'sysbus ReadDoubleWord 0x60091000' \
             -e 'quit' \
             2>&1 | tee output.txt
           echo "--- Renode output ---"
           cat output.txt
-          echo "--- Checking for expected message ---"
-          grep -q "Hello, world" output.txt
-          echo "PASS: Found expected UART output."
+          echo "--- Checking UART breathing pattern ---"
+          grep -q "breathing LED" output.txt
+          grep -q "breathe: peak" output.txt
+          grep -q "breathe: trough" output.txt
+          echo "--- Checking actual GPIO register state ---"
+          grep -A1 "GPIO_AT_PEAK" output.txt | grep -q "0x00000001"
+          grep -A1 "GPIO_AT_TROUGH" output.txt | grep -q "0x00000000"
+          echo "PASS: Breathing LED verified (UART + GPIO register)."
 
   publish:
     name: Publish firmware

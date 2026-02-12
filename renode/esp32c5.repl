@@ -1,6 +1,6 @@
 // ESP32-C5 — Renode Platform Description
 //
-// RISC-V RV32IMAC core with HP SRAM and a UART peripheral.
+// RISC-V RV32IMAC core with HP SRAM, UART, and a GPIO output stub.
 // The UART is an NS16550-compatible model mapped at the ESP32-C5
 // UART0 peripheral address (0x6000_0000).
 
@@ -19,3 +19,9 @@ sram: Memory.MappedMemory @ sysbus 0x40800000
 
 // UART (NS16550-compatible) at UART0 peripheral address
 uart0: UART.NS16550 @ sysbus 0x60000000
+
+// GPIO output register stub — the firmware writes LED PWM state here.
+// Backed by a 4 KB MappedMemory block so that read/write accesses from
+// the software PWM loop succeed without bus faults.
+gpio: Memory.MappedMemory @ sysbus 0x60091000
+    size: 0x1000

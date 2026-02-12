@@ -13,8 +13,8 @@ sysbus LoadELF @/app/firmware.elf
 
 showAnalyzer uart0
 
-# Run 100 ms of virtual time — more than enough for "Hello, world".
-# RunFor starts the emulation, runs for the given duration, then pauses.
-emulation RunFor "00:00:00.100"
+# Run 1 s of virtual time — enough for at least two full breathing cycles
+# (each cycle is ~400 ms: 200 ms ramp-up + 200 ms ramp-down).
+emulation RunFor "00:00:01.000"
 
 quit
