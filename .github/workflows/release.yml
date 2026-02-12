@@ -70,6 +70,6 @@ jobs:
         with:
           name: firmware
       - name: Upload firmware to release
-        run: gh release upload ${{ needs.release.outputs.version }} moto
+        run: gh release upload ${{ needs.release.outputs.version }} moto --repo ${{ github.repository }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
