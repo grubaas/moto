@@ -82,7 +82,13 @@ jobs:
           renode --disable-xwt --console \
             -e '$bin = @moto' \
             -e 'include @renode/esp32c5.resc' \
-            -e 'emulation RunFor "00:00:00.201"' \
+            -e 'emulation RunFor "00:00:00.100"' \
+            -e 'log "GPIO_AT_HALF_A"' \
+            -e 'sysbus ReadDoubleWord 0x60091000' \
+            -e 'emulation RunFor "00:00:00.0005"' \
+            -e 'log "GPIO_AT_HALF_B"' \
+            -e 'sysbus ReadDoubleWord 0x60091000' \
+            -e 'emulation RunFor "00:00:00.1005"' \
             -e 'log "GPIO_AT_PEAK"' \
             -e 'sysbus ReadDoubleWord 0x60091000' \
             -e 'emulation RunFor "00:00:00.200"' \
@@ -99,6 +105,9 @@ jobs:
           echo "--- Checking actual GPIO register state ---"
           grep -A1 "GPIO_AT_PEAK" output.txt | grep -q "0x00000001"
           grep -A1 "GPIO_AT_TROUGH" output.txt | grep -q "0x00000000"
+          HALF_A=$(grep -A1 "GPIO_AT_HALF_A" output.txt | tail -1)
+          HALF_B=$(grep -A1 "GPIO_AT_HALF_B" output.txt | tail -1)
+          [ "$HALF_A" != "$HALF_B" ] || { echo "FAIL: GPIO not toggling at ~50% duty"; exit 1; }
           echo "PASS: Breathing LED verified (UART + GPIO register)."
 
   publish:
