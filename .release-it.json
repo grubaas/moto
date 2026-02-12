@@ -3,7 +3,8 @@
     "commit": false,
     "tag": false,
     "push": false,
-    "tagName": "v${version}"
+    "tagName": "v${version}",
+    "getLatestTagFromAllRefs": true
   },
   "github": {
     "release": true,
