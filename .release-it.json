@@ -1,0 +1,21 @@
+{
+  "git": {
+    "commit": false,
+    "tag": false,
+    "push": false,
+    "tagName": "v${version}",
+    "getLatestTagFromAllRefs": true
+  },
+  "github": {
+    "release": true,
+    "releaseName": "v${version}"
+  },
+  "npm": {
+    "publish": false
+  },
+  "plugins": {
+    "@release-it/conventional-changelog": {
+      "preset": "conventionalcommits"
+    }
+  }
+}

@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+
+permissions: {}
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          sparse-checkout: .release-it.json
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Release
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE_IT="npx --yes --package release-it --package @release-it/conventional-changelog release-it"
+
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            LABEL=$(echo "${{ github.ref_name }}" | tr '/' '-')
+            ARGS="--preRelease=$LABEL"
+          fi
+
+          VERSION=$($RELEASE_IT --release-version $ARGS 2>/dev/null || true)
+
+          if [ -n "$VERSION" ]; then
+            $RELEASE_IT --ci $ARGS
+            echo "version=v${VERSION}" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build firmware
+    runs-on: ubuntu-24.04-arm
+    container: rust:1-bookworm
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - name: Add Cortex-M7 target
+        run: rustup target add thumbv7em-none-eabihf
+      - name: Build firmware
+        run: cargo build --release
+      - uses: actions/upload-artifact@v6
+        with:
+          name: firmware
+          path: target/thumbv7em-none-eabihf/release/moto
+
+  simulate:
+    name: Run in Renode
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Renode (native arm64 portable .NET build)
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+            libicu74 libssl3t64 wget
+          wget -qO /tmp/renode.tar.gz \
+            https://builds.renode.io/renode-latest.linux-arm64-portable-dotnet.tar.gz
+          sudo mkdir -p /opt/renode
+          sudo tar -xzf /tmp/renode.tar.gz -C /opt/renode --strip-components=1
+          rm /tmp/renode.tar.gz
+          echo "/opt/renode" >> "$GITHUB_PATH"
+      - uses: actions/download-artifact@v6
+        with:
+          name: firmware
+      - name: Simulate firmware and verify UART output
+        run: |
+          renode --disable-xwt --console \
+            -e '$bin = @moto' \
+            -e 'include @renode/teensy41.resc' \
+            -e 'emulation RunFor "00:00:00.100"' \
+            -e 'quit' \
+            2>&1 | tee output.txt
+          echo "--- Renode output ---"
+          cat output.txt
+          echo "--- Checking for expected message ---"
+          grep -q "Hello, world" output.txt
+          echo "PASS: Found expected UART output."
+
+  publish:
+    name: Publish firmware
+    needs: [release, build]
+    if: needs.release.outputs.version != ''
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          name: firmware
+      - name: Upload firmware to release
+        run: gh release upload ${{ needs.release.outputs.version }} moto --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
