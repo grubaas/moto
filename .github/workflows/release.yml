@@ -11,45 +11,56 @@ jobs:
     name: Release
     runs-on: ubuntu-24.04-arm
     outputs:
-      release_created: ${{ steps.check.outputs.release_created }}
-      tag_name: ${{ steps.check.outputs.version }}
+      version: ${{ steps.release.outputs.version }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          sparse-checkout: .release-it.json
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-node@v6
         with:
           node-version: 24
       - name: Release
+        id: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ "${{ github.ref_name }}" = "main" ]; then
-            npx --yes --package release-it --package @release-it/conventional-changelog release-it --ci
-          else
+          RELEASE_IT="npx --yes --package release-it --package @release-it/conventional-changelog release-it"
+
+          if [ "${{ github.ref_name }}" != "main" ]; then
             LABEL=$(echo "${{ github.ref_name }}" | tr '/' '-')
-            npx --yes --package release-it --package @release-it/conventional-changelog release-it --ci --preRelease=$LABEL
+            ARGS="--preRelease=$LABEL"
           fi
 
-  # publish:
-  #   name: Build & publish firmware
-  #   needs: release
-  #   if: needs.release.outputs.release_created == 'true'
-  #   runs-on: ubuntu-24.04-arm
-  #   container: rust:1-bookworm
-  #   permissions:
-  #     contents: write
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #       with:
-  #         ref: ${{ needs.release.outputs.tag_name }}
+          VERSION=$($RELEASE_IT --release-version $ARGS 2>/dev/null || true)
 
-  #     - name: Add Cortex-M7 target
-  #       run: rustup target add thumbv7em-none-eabihf
+          if [ -n "$VERSION" ]; then
+            $RELEASE_IT --ci $ARGS
+            echo "version=v${VERSION}" >> "$GITHUB_OUTPUT"
+          fi
 
-  #     - name: Build firmware
-  #       run: cargo build --release
+  publish:
+    name: Build & publish firmware
+    needs: release
+    if: needs.release.outputs.version != ''
+    runs-on: ubuntu-24.04-arm
+    container: rust:1-bookworm
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release.outputs.version }}
+          fetch-depth: 1
 
-  #     - name: Upload firmware to release
-  #       uses: softprops/action-gh-release@v2
-  #       with:
-  #         tag_name: ${{ needs.release.outputs.tag_name }}
-  #         files: target/thumbv7em-none-eabihf/release/moto
+      - name: Add Cortex-M7 target
+        run: rustup target add thumbv7em-none-eabihf
+
+      - name: Build firmware
+        run: cargo build --release
+
+      - name: Upload firmware to release
+        run: gh release upload ${{ needs.release.outputs.version }} target/thumbv7em-none-eabihf/release/moto
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
