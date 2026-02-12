@@ -13,7 +13,7 @@ using sysbus
 $bin ?= @../target/riscv32imac-unknown-none-elf/release/moto
 
 mach create "esp32c5"
-machine LoadPlatformDescription @esp32c5.repl
+machine LoadPlatformDescription @renode/esp32c5.repl
 
 sysbus LoadELF $bin
 
