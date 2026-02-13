@@ -13,22 +13,6 @@ RUN rustup target add riscv32imac-unknown-none-elf
 
 WORKDIR /app
 
-# 1. Copy dependency manifests & build config first (Docker layer caching)
-COPY Cargo.toml ./
-COPY .cargo .cargo
-COPY build.rs memory.x ./
-
-# 2. Create a minimal dummy source so `cargo build` downloads & compiles deps
-RUN mkdir src && \
-    printf '#![no_std]\n#![no_main]\nextern crate panic_halt;\n#[riscv_rt::entry]\nfn main() -> ! { loop {} }\n' \
-    > src/main.rs
-
-RUN cargo build --release
-
-# 3. Replace dummy source with the real firmware and rebuild
-COPY src/ src/
-RUN touch src/main.rs && cargo build --release
-
 # ---- Renode Stage -----------------------------------------------------------
 # No official arm64 Docker image exists for Renode, so we build our own from
 # the portable .NET tarball published at https://builds.renode.io/.
@@ -55,13 +39,3 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
 ENV PATH="/opt/renode:${PATH}"
 
 WORKDIR /app
-
-# Copy the compiled firmware ELF
-COPY --from=builder /app/target/riscv32imac-unknown-none-elf/release/moto /app/firmware.elf
-
-# Copy Renode platform description & scripts
-COPY renode/ /app/renode/
-
-# Default: run firmware headlessly and print UART output to the console
-ENTRYPOINT ["renode", "--disable-xwt", "--console"]
-CMD ["-e", "include @/app/renode/run-docker.resc"]
