@@ -18,3 +18,38 @@ machine LoadPlatformDescription @renode/esp32c5.repl
 sysbus LoadELF $bin
 
 showAnalyzer uart0
+
+# ---------------------------------------------------------------------------
+# GPIO brightness monitor — system bus write hook
+#
+# Intercepts every write to the GPIO ArrayMemory peripheral, tracks
+# on/off transitions with virtual timestamps, and prints the
+# time-averaged duty cycle (perceived LED brightness) per 10 ms window.
+# ---------------------------------------------------------------------------
+
+set brightness_hook """
+if 'bm_init' not in dir():
+    bm_init = True
+    bm_val = 0
+    bm_last_ms = 0.0
+    bm_on_ms = 0.0
+    bm_win_ms = 0.0
+    bm_WIN = 10.0
+
+now = machine.ElapsedVirtualTime.TimeElapsed.TotalMilliseconds
+dt = now - bm_last_ms
+if bm_val != 0:
+    bm_on_ms += dt
+
+bm_val = value & 1
+bm_last_ms = now
+
+we = now - bm_win_ms
+if we >= bm_WIN:
+    pct = int(bm_on_ms * 100.0 / we) if we > 0 else 0
+    print('brightness: %d%%' % pct)
+    bm_on_ms = 0.0
+    bm_win_ms = now
+"""
+
+sysbus SetHookBeforePeripheralWrite gpio $brightness_hook
