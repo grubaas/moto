@@ -128,3 +128,33 @@ jobs:
         run: gh release upload ${{ needs.release.outputs.version }} moto --repo ${{ github.repository }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-builder:
+    name: Publish builder image
+    needs: release
+    if: needs.release.outputs.version != ''
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}/builder
+          tags: |
+            type=raw,value=${{ needs.release.outputs.version }}
+            type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
+            type=raw,value={{branch}},enable=${{ github.ref_name != 'main' }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: builder
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
