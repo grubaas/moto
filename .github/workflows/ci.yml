@@ -43,14 +43,13 @@ jobs:
 
   build:
     name: Build firmware
+    needs: publish-builder
     runs-on: ubuntu-24.04-arm
-    container: rust:1-bookworm
+    container: ghcr.io/${{ github.repository }}/builder:sha-${{ github.sha }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
-      - name: Add RISC-V target
-        run: rustup target add riscv32imac-unknown-none-elf
       - name: Build firmware
         run: cargo build --release
       - uses: actions/upload-artifact@v6
@@ -147,7 +146,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}/builder
           tags: |
-            type=sha
+            type=sha,format=long
             type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
             type=raw,value={{branch}},enable=${{ github.ref_name != 'main' }}
       - uses: docker/build-push-action@v6
