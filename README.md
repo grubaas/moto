@@ -6,31 +6,12 @@ Bare-metal Rust firmware for the **ESP32-C5** microcontroller
 
 ## Project structure
 
-```
-moto/
-├── .cargo/config.toml        # Rust cross-compilation target & flags
-├── .github/workflows/
-│   └── ci.yml                # GitHub Actions CI — build + Renode test
-├── src/
-│   └── main.rs               # Bare-metal "Hello, world!" firmware
-├── renode/
-│   ├── esp32c5.repl          # Renode platform description (RISC-V + UART)
-│   ├── esp32c5.resc          # Renode script — local / interactive use
-│   └── run-docker.resc       # Renode script — headless Docker execution
-├── Cargo.toml                # Rust package manifest
-├── build.rs                  # Build script (copies memory.x to OUT_DIR)
-├── memory.x                  # Linker script (HP SRAM memory layout)
-├── Dockerfile                # Multi-stage: Rust build → Renode runner
-├── docker-compose.yml        # Convenience services (firmware, builder)
-└── README.md
-```
-
 ## Quick start (Docker — no local toolchain needed)
 
 ```bash
 # Build the firmware and run it in the Renode simulator:
-docker build -t moto .
-docker run --rm moto
+docker compose build
+docker compose run --rm build
 ```
 
 You should see Renode output containing:

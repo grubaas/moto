@@ -39,13 +39,3 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
 ENV PATH="/opt/renode:${PATH}"
 
 WORKDIR /app
-
-# Copy the compiled firmware ELF
-COPY --from=builder /app/target/riscv32imac-unknown-none-elf/release/moto /app/firmware.elf
-
-# Copy Renode platform description & scripts
-COPY renode/ /app/renode/
-
-# Default: run firmware headlessly and print UART output to the console
-ENTRYPOINT ["renode", "--disable-xwt", "--console"]
-CMD ["-e", "include @/app/renode/run-docker.resc"]
