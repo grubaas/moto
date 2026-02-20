@@ -1,15 +1,11 @@
 menu "Moto Configuration"
 
-    config MOTO_WIFI_SSID
-        string "WiFi SSID"
-        default "changeme"
+    config MOTO_DEFAULT_ANIMATION
+        int "Default animation index (0=Comet, 1=Sparkle, 2=Stack, 3=Ping-Pong, 4=Wave)"
+        range 0 4
+        default 0
         help
-            SSID of the WiFi access point to connect to.
-
-    config MOTO_WIFI_PASS
-        string "WiFi Password"
-        default "changeme"
-        help
-            Password for the WiFi access point.
+            Animation pattern to play on first boot before any Matter controller
+            sets the Mode Select attribute.
 
 endmenu

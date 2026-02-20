@@ -106,3 +106,4 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`):
 
 See [LICENSE](LICENSE).
 esptool.py --chip esp32c5 --port /dev/cu.usbmodem\* -b 460800 write_flash 0x0 build/firmware.bin
+34970112332

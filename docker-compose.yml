@@ -1,5 +1,5 @@
 services:
-  # Build the ESP-IDF firmware inside the Espressif toolchain container.
+  # Build the Matter-enabled firmware inside the ESP-IDF + ESP-Matter container.
   # Usage: docker compose run --build build
   build:
     build:
@@ -9,8 +9,18 @@ services:
     volumes:
       - ./:/app
     command: >-
-      bash -c "idf.py --preview build
+      bash -c "idf.py set-target esp32c5
+      && idf.py build
       && cd build
       && esptool.py --chip esp32c5 merge_bin
       --flash_mode dio --flash_size 4MB
       -o firmware.bin @flash_args"
+
+  clean:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+      target: builder
+    volumes:
+      - ./:/app
+    command: idf.py fullclean
