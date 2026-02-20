@@ -1,1 +1,17 @@
-/target
+# ESP-IDF build output
+/build
+
+# Generated sdkconfig (defaults file is tracked; full config is generated)
+sdkconfig
+sdkconfig.old
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs / editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

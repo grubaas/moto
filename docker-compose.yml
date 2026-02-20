@@ -1,6 +1,6 @@
 services:
-  # Build the firmware and run it in the Renode simulator (headless).
-  # Usage: docker compose up --build firmware
+  # Build the ESP-IDF firmware inside the Espressif toolchain container.
+  # Usage: docker compose run --build build
   build:
     build:
       context: ./
@@ -8,6 +8,9 @@ services:
       target: builder
     volumes:
       - ./:/app
-    command: ["cargo", "build", "--release"]
-
-
+    command: >-
+      bash -c "idf.py --preview build
+      && cd build
+      && esptool.py --chip esp32c5 merge_bin
+      --flash_mode dio --flash_size 4MB
+      -o firmware.bin @flash_args"

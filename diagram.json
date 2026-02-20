@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "author": "moto",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-c5-devkitc-1", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    {
+      "type": "wokwi-led",
+      "id": "led1",
+      "top": 130.8,
+      "left": -169,
+      "rotate": 270,
+      "attrs": { "color": "white" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": -44.05,
+      "left": -96,
+      "attrs": { "value": "330" }
+    }
+  ],
+  "connections": [
+    [ "esp:8", "r1:2", "green", [] ],
+    [ "r1:1", "led1:A", "green", [] ],
+    [ "led1:C", "esp:GND.1", "black", [] ]
+  ],
+  "dependencies": {}
+}
