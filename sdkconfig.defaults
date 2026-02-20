@@ -1,0 +1,23 @@
+# Target
+CONFIG_IDF_TARGET="esp32c5"
+
+# Flash size (ESP32-C5 modules typically have 4 MB)
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# Use custom partition table with larger OTA partitions
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# WiFi
+CONFIG_ESP_WIFI_ENABLED=y
+
+# OTA rollback
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# Console over UART0 (required for Wokwi serial monitor)
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+
+# Logging
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+CONFIG_MOTO_WIFI_SSID="changeme"
+CONFIG_MOTO_WIFI_PASS="changeme"

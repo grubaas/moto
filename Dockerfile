@@ -1,41 +1,19 @@
 # =============================================================================
-# Multi-stage Dockerfile for moto firmware
+# Dockerfile for moto firmware (ESP-IDF / C)
 #
-#   Stage 1 (builder) — compiles Rust firmware for riscv32imac-unknown-none-elf
-#   Stage 2 (runner)  — runs the ELF in the Renode simulator (headless)
+#   Uses the official Espressif ESP-IDF Docker image which ships with the
+#   full toolchain (CMake, Ninja, riscv32 GCC) for all Espressif SoCs.
 # =============================================================================
 
-# ---- Build Stage ------------------------------------------------------------
-FROM rust:1-bookworm AS builder
+FROM espressif/idf:v5.5 AS builder
 
-# Cross-compilation target for RISC-V RV32IMAC (ESP32-C5)
-RUN rustup target add riscv32imac-unknown-none-elf
+ENV IDF_PATH_FORCE=1
 
 WORKDIR /app
 
-# ---- Renode Stage -----------------------------------------------------------
-# No official arm64 Docker image exists for Renode, so we build our own from
-# the portable .NET tarball published at https://builds.renode.io/.
-# TARGETARCH is set automatically by Docker (amd64 | arm64).
-FROM debian:bookworm-slim AS runner
+SHELL ["/bin/bash", "-c"]
 
-ARG TARGETARCH
+RUN printf '#!/bin/bash\nsource "$IDF_PATH/export.sh"\nexec "$@"\n' > /entrypoint.sh \
+    && chmod +x /entrypoint.sh
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        libicu72 libssl3 ca-certificates wget \
-    && rm -rf /var/lib/apt/lists/*
-
-# Download the architecture-appropriate Renode portable .NET build
-RUN if [ "$TARGETARCH" = "arm64" ]; then \
-      RENODE_URL="https://builds.renode.io/renode-latest.linux-arm64-portable-dotnet.tar.gz"; \
-    else \
-      RENODE_URL="https://builds.renode.io/renode-latest.linux-portable-dotnet.tar.gz"; \
-    fi && \
-    wget -qO /tmp/renode.tar.gz "$RENODE_URL" && \
-    mkdir -p /opt/renode && \
-    tar -xzf /tmp/renode.tar.gz -C /opt/renode --strip-components=1 && \
-    rm /tmp/renode.tar.gz
-
-ENV PATH="/opt/renode:${PATH}"
-
-WORKDIR /app
+ENTRYPOINT ["/entrypoint.sh"]

@@ -1,97 +1,108 @@
 # moto
 
-Bare-metal Rust firmware for the **ESP32-C5** microcontroller
-(Espressif — RISC-V RV32IMAC), compiled with Docker and simulated in
-[Renode](https://renode.io).
+C firmware for the **ESP32-C5** microcontroller (RISC-V) with **OTA
+self-update** over WiFi, built on
+[ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c5/) v5.5.
+
+## Features
+
+- **Breathing LED** using hardware LEDC PWM (zero CPU overhead)
+- **WiFi 6** connectivity (dual-band 2.4 + 5 GHz)
+- **OTA firmware updates** from GitHub Releases with A/B partition rollback
+- **Automatic rollback** — if new firmware fails to boot, the bootloader
+  reverts to the previous version
 
 ## Project structure
+
+```
+main/
+  main.c              Entry point: NVS, WiFi, OTA, LED
+  wifi.c / wifi.h     WiFi station connection
+  ota.c / ota.h       OTA update client (checks GitHub Releases)
+  breathing.c / .h    Breathing LED cycle (LEDC PWM)
+  Kconfig.projbuild   WiFi credentials config
+  CMakeLists.txt      Component registration
+CMakeLists.txt         Top-level ESP-IDF project file
+sdkconfig.defaults     ESP-IDF configuration overrides
+Dockerfile             Docker build environment
+```
 
 ## Quick start (Docker — no local toolchain needed)
 
 ```bash
-# Build the firmware and run it in the Renode simulator:
+export WIFI_SSID="YourNetwork"
+export WIFI_PASS="YourPassword"
+
 docker compose build
-docker compose run --rm build
 ```
 
-You should see Renode output containing:
-
-```
-Hello, world! Welcome to moto on ESP32-C5 (RISC-V)
-```
-
-### Other Docker targets
-
-```bash
-# Build only (no simulation):
-docker build --target builder -t moto-builder .
-
-# Interactive shell inside the build environment:
-docker build --target builder -t moto-builder .
-docker run --rm -it moto-builder /bin/bash
-
-# Docker Compose:
-docker compose up --build firmware      # build + run
-docker compose run --rm builder         # interactive builder shell
-```
+The firmware binary is at `build/moto.bin` inside the container.
 
 ## Local development
 
 ### Prerequisites
 
-1. **Rust** with the RISC-V target:
-   ```bash
-   rustup target add riscv32imac-unknown-none-elf
-   ```
-2. **Renode** (for simulation):
-   - macOS: `brew install renode`
-   - Linux: see https://renode.readthedocs.io/en/latest/introduction/installing.html
+1. **ESP-IDF v5.5** — follow the
+   [install guide](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c5/get-started/index.html)
+2. Source the environment: `. $HOME/esp/esp-idf/export.sh`
 
-### Build & run
+### Build & flash
 
 ```bash
-# Compile the firmware:
-cargo build --release
+idf.py set-target esp32c5
+idf.py menuconfig   # set WiFi SSID/password under "Moto Configuration"
+idf.py build flash monitor
+```
 
-# Open Renode with the firmware loaded (interactive GUI):
-renode renode/esp32c5.resc
-# Then type `start` in the Renode monitor window.
+### Configure WiFi without menuconfig
+
+```bash
+# Append to sdkconfig.defaults before building:
+echo 'CONFIG_MOTO_WIFI_SSID="YourNetwork"' >> sdkconfig.defaults
+echo 'CONFIG_MOTO_WIFI_PASS="YourPassword"' >> sdkconfig.defaults
+idf.py build
 ```
 
 ## How it works
 
-### Hardware target
+### OTA update flow
 
-The firmware targets the **Espressif ESP32-C5** SoC:
+1. On boot, the firmware connects to WiFi and checks GitHub Releases for a
+   newer `moto.bin`.
+2. If found, it streams the binary into the inactive flash partition (A/B
+   scheme).
+3. After verification the device reboots into the new firmware.
+4. The new firmware marks itself as valid; if it fails to do so, the
+   bootloader automatically rolls back to the previous version.
 
-| Feature       | Detail                                     |
-|---------------|--------------------------------------------|
-| Core          | RISC-V RV32IMAC @ up to 240 MHz           |
-| HP SRAM       | 384 KB (unified instruction + data)        |
-| LP SRAM       | 16 KB (low-power domain)                   |
-| UART          | UART0 @ `0x6000_0000`                     |
-| Connectivity  | Wi-Fi 6 (dual-band), BLE 5, 802.15.4      |
+### Flash partition layout
 
-### Renode simulation
-
-[Renode](https://renode.io) is an open-source embedded systems simulator by
-Antmicro. The platform is defined in `renode/esp32c5.repl` with:
-
-- A RISC-V RV32IMAC CPU
-- 384 KB of HP SRAM at the ESP32-C5 address
-- An NS16550-compatible UART at the UART0 peripheral address
-
-The firmware writes "Hello, world!" over the UART, which Renode displays on
-the console (headless) or in an analyzer window (GUI mode).
+```
+┌──────────────────────┐
+│  Bootloader          │
+├──────────────────────┤
+│  Partition Table     │
+├──────────────────────┤
+│  NVS (24 KB)         │  WiFi creds, config
+├──────────────────────┤
+│  OTA Data (8 KB)     │  Tracks active slot
+├──────────────────────┤
+│  PHY Init (4 KB)     │  WiFi/BT calibration
+├──────────────────────┤
+│  ota_0 (1600 KB)     │  App slot A
+├──────────────────────┤
+│  ota_1 (1600 KB)     │  App slot B
+└──────────────────────┘
+```
 
 ### CI pipeline
 
 The GitHub Actions workflow (`.github/workflows/ci.yml`):
 
-1. Builds the firmware for the `riscv32imac-unknown-none-elf` target
-2. Runs the firmware in Renode (headless)
-3. Asserts that the UART output contains the expected "Hello, world" message
+1. **Build** — compiles firmware in the ESP-IDF Docker container
+2. **Publish** — uploads `moto.bin` to GitHub Releases (the OTA update source)
 
 ## License
 
 See [LICENSE](LICENSE).
+esptool.py --chip esp32c5 --port /dev/cu.usbmodem\* -b 460800 write_flash 0x0 build/firmware.bin

@@ -51,32 +51,17 @@ jobs:
         with:
           fetch-depth: 1
       - name: Build firmware
-        run: cargo build --release
+        run: |
+          . $IDF_PATH/export.sh
+          idf.py --preview build
+      - name: Convert to flashable binary
+        run: |
+          . $IDF_PATH/export.sh
+          esptool.py --chip esp32c5 merge_bin -o moto.bin --flash_mode dio --flash_size 4MB 0x0 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin 0x10000 build/moto.bin
       - uses: actions/upload-artifact@v6
         with:
           name: firmware
-          path: target/riscv32imac-unknown-none-elf/release/moto
-
-  simulate:
-    name: Run in Renode
-    needs: [build, publish-runner]
-    runs-on: ubuntu-24.04-arm
-    container: ghcr.io/${{ github.repository }}/runner:sha-${{ github.sha }}
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v6
-        with:
-          name: firmware
-      - name: Simulate
-        run: |
-          renode --disable-xwt --console \
-            -e '$bin = @moto' \
-            -e 'include @renode/esp32c5.resc' \
-            -e 'emulation RunFor "00:00:01.000"' \
-            -e 'quit' \
-            2>&1 | tee output.txt
-          echo "--- Renode output ---"
-          cat output.txt
+          path: moto.bin
 
   publish:
     name: Publish firmware
@@ -90,7 +75,7 @@ jobs:
         with:
           name: firmware
       - name: Upload firmware to release
-        run: gh release upload ${{ needs.release.outputs.version }} moto --repo ${{ github.repository }}
+        run: gh release upload ${{ needs.release.outputs.version }} moto.bin --repo ${{ github.repository }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -124,34 +109,3 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/builder:cache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository }}/builder:cache,mode=max
-
-  publish-runner:
-    name: Publish runner image
-    runs-on: ubuntu-24.04-arm
-    permissions:
-      packages: write
-    steps:
-      - uses: actions/checkout@v6
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@v5
-        id: meta
-        with:
-          images: ghcr.io/${{ github.repository }}/runner
-          tags: |
-            type=sha,format=long
-            type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
-            type=raw,value={{branch}},enable=${{ github.ref_name != 'main' }}
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          target: runner
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/runner:cache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}/runner:cache,mode=max
