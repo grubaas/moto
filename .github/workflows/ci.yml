@@ -51,9 +51,13 @@ jobs:
         with:
           fetch-depth: 1
       - name: Build firmware
-        run: idf.py --preview build
+        run: |
+          . $IDF_PATH/export.sh
+          idf.py --preview build
       - name: Convert to flashable binary
-        run: esptool.py --chip esp32c5 merge_bin -o moto.bin --flash_mode dio --flash_size 4MB 0x0 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin 0x10000 build/moto.bin
+        run: |
+          . $IDF_PATH/export.sh
+          esptool.py --chip esp32c5 merge_bin -o moto.bin --flash_mode dio --flash_size 4MB 0x0 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin 0x10000 build/moto.bin
       - uses: actions/upload-artifact@v6
         with:
           name: firmware
