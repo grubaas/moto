@@ -34,8 +34,9 @@ static const char *s_led_roles[LED_COUNT] = {
 };
 
 /* Vendor-specific cluster carrying the vehicle-light role (read-only string) */
-static constexpr uint32_t kRoleClusterId  = 0xFFF10001;
+static constexpr uint32_t kRoleClusterId   = 0xFFF10001;
 static constexpr uint32_t kRoleAttributeId = 0x0000;
+static constexpr uint16_t kMaxRoleLen      = 32;
 
 /* ── Matter event callback ── */
 
@@ -113,7 +114,7 @@ static esp_err_t add_role_cluster(endpoint_t *ep, const char *role)
         return ESP_FAIL;
 
     attribute::create(cl, kRoleAttributeId, ATTRIBUTE_FLAG_WRITABLE | ATTRIBUTE_FLAG_NONVOLATILE,
-                      esp_matter_char_str((char *)role, strlen(role)));
+                      esp_matter_char_str((char *)role, strlen(role)), kMaxRoleLen);
     return ESP_OK;
 }
 

@@ -16,6 +16,76 @@ services:
       --flash_mode dio --flash_size 4MB
       -o firmware.bin @flash_args"
 
+  # Attach USB-to-UART adapter into Docker via USB/IP.
+  # Requires pyusbip running on the host:
+  #   pip install libusb1
+  #   git clone https://github.com/tumayt/pyusbip /tmp/pyusbip
+  #   sudo python3 /tmp/pyusbip/pyusbip.py
+  # Find the adapter bus-id:
+  #   docker run --rm -it --privileged --pid=host alpine \
+  #     nsenter -t 1 -m usbip list -r host.docker.internal
+  # Then set USBIP_BUS_ID to the adapter's bus-id before running flash.
+  # Usage: docker compose up -d devmgr
+  devmgr:
+    image: alpine
+    privileged: true
+    pid: host
+    environment:
+      - USBIP_BUS_ID=${USBIP_BUS_ID:-20-1}
+    command:
+      - sh
+      - -c
+      - |
+        nsenter -t 1 -m sh -c '
+          for p in 0 1 2 3 4 5 6 7; do usbip detach -p $$p 2>/dev/null; done
+          sleep 1
+          usbip attach -r host.docker.internal -b '"$$USBIP_BUS_ID"'
+        ' && echo 'USB device attached' && sleep infinity
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nsenter -t 1 -m test -e /dev/ttyUSB0"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+      start_period: 3s
+
+  # Flash firmware and open serial monitor via USB/IP-attached UART adapter.
+  # Usage: docker compose run flash
+  flash:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+      target: builder
+    privileged: true
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./:/app
+    depends_on:
+      devmgr:
+        condition: service_healthy
+    command: >-
+      bash -c "mknod /dev/ttyUSB0 c 188 0 2>/dev/null;
+      idf.py -p /dev/ttyUSB0 flash monitor"
+
+  # Flash with factory reset then open serial monitor.
+  # Usage: docker compose run flash-factory
+  flash-factory:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+      target: builder
+    privileged: true
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./:/app
+    depends_on:
+      devmgr:
+        condition: service_healthy
+    command: >-
+      bash -c "mknod /dev/ttyUSB0 c 188 0 2>/dev/null;
+      idf.py -p /dev/ttyUSB0 erase-flash flash monitor"
+
   clean:
     build:
       context: ./
