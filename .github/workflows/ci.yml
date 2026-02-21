@@ -59,11 +59,11 @@ jobs:
       - name: Convert to flashable binary
         run: |
           . $IDF_PATH/export.sh
-          cd build && esptool.py --chip esp32c5 merge_bin -o ../moto.bin --flash_mode dio --flash_size 4MB @flash_args
+          cd build && esptool.py --chip esp32c5 merge_bin -o ../firmware.bin --flash_mode dio --flash_size 4MB @flash_args
       - uses: actions/upload-artifact@v6
         with:
           name: firmware
-          path: moto.bin
+          path: firmware.bin
 
   publish:
     name: Publish firmware
@@ -77,7 +77,7 @@ jobs:
         with:
           name: firmware
       - name: Upload firmware to release
-        run: gh release upload ${{ needs.release.outputs.version }} moto.bin --repo ${{ github.repository }}
+        run: gh release upload ${{ needs.release.outputs.version }} firmware.bin --repo ${{ github.repository }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

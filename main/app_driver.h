@@ -3,6 +3,8 @@
 #include <esp_err.h>
 #include <esp_matter.h>
 
+#define LED_COUNT 6
+
 typedef void *app_driver_handle_t;
 
 app_driver_handle_t app_driver_light_init(void);

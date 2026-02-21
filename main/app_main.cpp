@@ -12,7 +12,6 @@
 
 #include <app/server/Server.h>
 #include <app/server/CommissioningWindowManager.h>
-#include <app/clusters/mode-select-server/supported-modes-manager.h>
 
 using namespace esp_matter;
 using namespace esp_matter::attribute;
@@ -21,9 +20,22 @@ using namespace chip::app::Clusters;
 
 static const char *TAG = "app_main";
 
-uint16_t g_light_endpoint_id = 0;
+uint16_t g_light_endpoint_ids[LED_COUNT] = {0};
 
 static constexpr auto k_timeout_seconds = 300;
+
+static const char *s_led_roles[LED_COUNT] = {
+    "left front indicator",
+    "right front indicator",
+    "left back indicator",
+    "right back indicator",
+    "taillight",
+    "main light",
+};
+
+/* Vendor-specific cluster carrying the vehicle-light role (read-only string) */
+static constexpr uint32_t kRoleClusterId  = 0xFFF10001;
+static constexpr uint32_t kRoleAttributeId = 0x0000;
 
 /* ── Matter event callback ── */
 
@@ -92,56 +104,16 @@ static esp_err_t app_attribute_update_cb(attribute::callback_type_t type, uint16
     return ESP_OK;
 }
 
-/* ── ModeSelect SupportedModesManager ── */
+/* ── Add vendor-specific role cluster to an endpoint ── */
 
-using ModeOption = ModeSelect::Structs::ModeOptionStruct::Type;
-using ModeOptionsProvider = ModeSelect::SupportedModesManager::ModeOptionsProvider;
-
-static const char *s_mode_labels[] = {"Comet", "Sparkle", "Stack", "Ping-Pong", "Wave"};
-static ModeOption s_mode_options[ANIM_COUNT];
-
-class AnimationModesManager : public ModeSelect::SupportedModesManager {
-public:
-    AnimationModesManager() {
-        for (int i = 0; i < ANIM_COUNT; i++) {
-            s_mode_options[i].label = chip::CharSpan::fromCharString(s_mode_labels[i]);
-            s_mode_options[i].mode  = static_cast<uint8_t>(i);
-        }
-    }
-
-    ModeOptionsProvider getModeOptionsProvider(chip::EndpointId endpointId) const override {
-        return ModeOptionsProvider(s_mode_options, s_mode_options + ANIM_COUNT);
-    }
-
-    chip::Protocols::InteractionModel::Status getModeOptionByMode(
-        chip::EndpointId endpointId, uint8_t mode,
-        const ModeOption **dataPtr) const override
-    {
-        if (mode >= ANIM_COUNT)
-            return chip::Protocols::InteractionModel::Status::InvalidCommand;
-        *dataPtr = &s_mode_options[mode];
-        return chip::Protocols::InteractionModel::Status::Success;
-    }
-};
-
-static AnimationModesManager s_modes_manager;
-
-/* ── Add ModeSelect cluster to the light endpoint ── */
-
-static esp_err_t add_mode_select_cluster(endpoint_t *ep)
+static esp_err_t add_role_cluster(endpoint_t *ep, const char *role)
 {
-    cluster::mode_select::config_t ms_config;
-    strncpy(ms_config.mode_select_description, "Animation",
-            sizeof(ms_config.mode_select_description) - 1);
-    ms_config.current_mode = 0;
-    ms_config.delegate = &s_modes_manager;
+    cluster_t *cl = cluster::create(ep, kRoleClusterId, CLUSTER_FLAG_SERVER);
+    if (!cl)
+        return ESP_FAIL;
 
-    cluster_t *cluster = cluster::mode_select::create(ep, &ms_config, CLUSTER_FLAG_SERVER);
-    if (!cluster) return ESP_FAIL;
-
-    cluster::mode_select::attribute::create_start_up_mode(cluster, nullable<uint8_t>());
-    cluster::mode_select::attribute::create_on_mode(cluster, nullable<uint8_t>());
-
+    attribute::create(cl, kRoleAttributeId, ATTRIBUTE_FLAG_WRITABLE | ATTRIBUTE_FLAG_NONVOLATILE,
+                      esp_matter_char_str((char *)role, strlen(role)));
     return ESP_OK;
 }
 
@@ -160,7 +132,7 @@ extern "C" void app_main()
     ESP_ERROR_CHECK(err);
 
     /* LED hardware */
-    app_driver_handle_t light_handle = app_driver_light_init();
+    app_driver_light_init();
 
     /* Matter node (root endpoint 0 is created automatically) */
     node::config_t node_config;
@@ -170,33 +142,34 @@ extern "C" void app_main()
         abort();
     }
 
-    /* Dimmable light endpoint (OnOff + LevelControl) */
-    dimmable_light::config_t light_config;
-    light_config.on_off.on_off = true;
-    light_config.on_off_lighting.start_up_on_off = nullable<uint8_t>();
-    light_config.level_control.current_level = nullable<uint8_t>(254);
-    light_config.level_control.on_level      = nullable<uint8_t>(254);
-    light_config.level_control_lighting.start_up_current_level = nullable<uint8_t>(254);
+    /* Create one dimmable-light endpoint per LED */
+    for (int i = 0; i < LED_COUNT; i++) {
+        dimmable_light::config_t light_config;
+        light_config.on_off.on_off                                  = true;
+        light_config.on_off_lighting.start_up_on_off                = nullable<uint8_t>();
+        light_config.level_control.current_level                    = nullable<uint8_t>(254);
+        light_config.level_control.on_level                         = nullable<uint8_t>(254);
+        light_config.level_control_lighting.start_up_current_level  = nullable<uint8_t>(254);
 
-    endpoint_t *endpoint = dimmable_light::create(node, &light_config, ENDPOINT_FLAG_NONE, light_handle);
-    if (!endpoint) {
-        ESP_LOGE(TAG, "Failed to create dimmable light endpoint");
-        abort();
+        endpoint_t *endpoint = dimmable_light::create(node, &light_config, ENDPOINT_FLAG_NONE, NULL);
+        if (!endpoint) {
+            ESP_LOGE(TAG, "Failed to create endpoint for LED %d (%s)", i, s_led_roles[i]);
+            abort();
+        }
+
+        g_light_endpoint_ids[i] = endpoint::get_id(endpoint);
+        ESP_LOGI(TAG, "LED %d (%s) -> endpoint %d", i, s_led_roles[i], g_light_endpoint_ids[i]);
+
+        err = add_role_cluster(endpoint, s_led_roles[i]);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to add role cluster to endpoint %d", g_light_endpoint_ids[i]);
+        }
+
+        /* Brightness changes rapidly during transitions — defer NVS writes */
+        attribute_t *level_attr = attribute::get(g_light_endpoint_ids[i],
+            LevelControl::Id, LevelControl::Attributes::CurrentLevel::Id);
+        attribute::set_deferred_persistence(level_attr);
     }
-
-    g_light_endpoint_id = endpoint::get_id(endpoint);
-    ESP_LOGI(TAG, "Light created with endpoint_id %d", g_light_endpoint_id);
-
-    /* Add Mode Select cluster for animation pattern switching */
-    err = add_mode_select_cluster(endpoint);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to add ModeSelect cluster: %s", esp_err_to_name(err));
-    }
-
-    /* Mark brightness for deferred persistence (changes rapidly during transitions) */
-    attribute_t *level_attr = attribute::get(g_light_endpoint_id,
-        LevelControl::Id, LevelControl::Attributes::CurrentLevel::Id);
-    attribute::set_deferred_persistence(level_attr);
 
     /* Start Matter */
     err = esp_matter::start(app_event_cb);
@@ -209,12 +182,11 @@ extern "C" void app_main()
     esp_wifi_set_ps(WIFI_PS_NONE);
 
     /* Apply persisted attribute values to the LED driver */
-    app_driver_light_set_defaults(g_light_endpoint_id);
+    for (int i = 0; i < LED_COUNT; i++) {
+        app_driver_light_set_defaults(g_light_endpoint_ids[i]);
+    }
 
-    /* Start LED animation task */
-    xTaskCreate(led_task, "led_anim", 4096, NULL, 5, NULL);
-
-    ESP_LOGI(TAG, "moto Matter device started");
+    ESP_LOGI(TAG, "moto Matter device started (%d light endpoints)", LED_COUNT);
 
 #if CONFIG_ENABLE_CHIP_SHELL
     esp_matter::console::diagnostics_register_commands();
