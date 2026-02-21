@@ -37,34 +37,83 @@ docker-compose.yml     Docker Compose build service
 ## Build
 
 ```bash
-docker compose run --build build
+docker compose run --rm --build build
 ```
 
 The merged flashable binary is output as `build/firmware.bin`.
 
 ## Flash
 
-Flashing runs on the host because the ESP32-C5's USB-Serial/JTAG interface
-requires direct USB access for the download-mode reset (not possible from
-Docker on macOS). Install `esptool` via Homebrew:
+There are two ways to flash depending on your hardware setup.
+
+### Option A: USB-to-UART adapter via USB/IP (supports Docker)
+
+With an external USB-to-UART adapter (CP2102, CH340, FTDI) wired to the
+ESP32-C5's UART0, flashing works from Docker at full speed via USB/IP. The
+adapter doesn't re-enumerate during the download-mode reset (unlike the
+built-in USB-Serial/JTAG), so the USB/IP attachment stays stable.
+
+Wiring:
+
+| Adapter | ESP32-C5     |
+| ------- | ------------ |
+| TX      | RX (GPIO17)  |
+| RX      | TX (GPIO16)  |
+| DTR     | EN (reset)   |
+| RTS     | GPIO9 (boot) |
+| GND     | GND          |
+
+Install and start the USB/IP server on the host:
 
 ```bash
-brew install esptool
+pip install libusb1
+git clone https://github.com/tumayt/pyusbip /tmp/pyusbip
+sudo python3 /tmp/pyusbip/pyusbip.py > /dev/null
 ```
 
-Then flash the merged binary produced by the build step:
+Find the adapter's bus-id (in a second terminal):
+
+```bash
+docker run --rm -it --privileged --pid=host alpine \
+  nsenter -t 1 -m usbip list -r host.docker.internal
+```
+
+Flash from Docker (set `USBIP_BUS_ID` to the adapter's bus-id from above):
+
+```bash
+USBIP_BUS_ID=1-1 docker compose run --rm flash
+```
+
+Factory-reset flash (erases NVS, Matter fabric, WiFi credentials, OTA state):
+
+```bash
+USBIP_BUS_ID=1-1 docker compose run --rm flash-factory
+```
+
+Stop the USB/IP device manager when done:
+
+```bash
+docker compose down devmgr
+```
+
+### Option B: Built-in USB-Serial/JTAG (host only)
+
+The built-in USB-Serial/JTAG (`/dev/cu.usbmodem*`) requires direct USB access
+for the download-mode reset, which isn't possible from Docker on macOS. Flash
+directly from the host with esptool (`brew install esptool`):
 
 ```bash
 esptool.py --chip esp32c5 --port /dev/cu.usbmodem* -b 460800 write_flash 0x0 build/firmware.bin
 ```
 
-To flash **with a factory reset** (erases NVS, Matter fabric, WiFi credentials,
-and OTA state so the device boots fresh and re-opens the commissioning window):
+Factory-reset flash:
 
 ```bash
 esptool.py --chip esp32c5 --port /dev/cu.usbmodem* -b 460800 erase_flash && \
 esptool.py --chip esp32c5 --port /dev/cu.usbmodem* -b 460800 write_flash 0x0 build/firmware.bin
 ```
+
+### Monitor
 
 To monitor serial output after flashing:
 
@@ -83,7 +132,7 @@ endpoint exposes:
 | ------------------- | ----------------------------------------- |
 | OnOff               | Turn the individual LED on/off            |
 | LevelControl        | Set brightness (0–254)                    |
-| Custom `0xFFF10001` | Writable `role` string (persisted to NVS) |
+| Custom `0xFFF10001` | Writable `role` string (max 32 bytes, persisted to NVS) |
 
 Default role assignments (GPIO order):
 
