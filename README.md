@@ -1,108 +1,119 @@
 # moto
 
-C firmware for the **ESP32-C5** microcontroller (RISC-V) with **OTA
-self-update** over WiFi, built on
-[ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c5/) v5.5.
+[Matter](https://csa-iot.org/all-solutions/matter/)-enabled LED controller
+firmware for the **ESP32-C5** (RISC-V), built on
+[ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c5/) v5.5.1
+and the [ESP-Matter](https://github.com/espressif/esp-matter) SDK.
 
 ## Features
 
-- **Breathing LED** using hardware LEDC PWM (zero CPU overhead)
+- **Matter smart light** — appears as a dimmable light with animation mode
+  selection via the ModeSelect cluster
+- **5 LED animations** — Comet, Sparkle, Stack, Ping-Pong, Wave (hardware LEDC
+  PWM with gamma correction)
 - **WiFi 6** connectivity (dual-band 2.4 + 5 GHz)
-- **OTA firmware updates** from GitHub Releases with A/B partition rollback
-- **Automatic rollback** — if new firmware fails to boot, the bootloader
-  reverts to the previous version
+- **BLE commissioning** — pair with any Matter controller (Apple Home, Google
+  Home, etc.)
+- **OTA firmware updates** via the Matter OTA Requestor with A/B partition
+  rollback
+- **Matter shell** for runtime diagnostics over UART
 
 ## Project structure
 
 ```
 main/
-  main.c              Entry point: NVS, WiFi, OTA, LED
-  wifi.c / wifi.h     WiFi station connection
-  ota.c / ota.h       OTA update client (checks GitHub Releases)
-  breathing.c / .h    Breathing LED cycle (LEDC PWM)
-  Kconfig.projbuild   WiFi credentials config
-  CMakeLists.txt      Component registration
+  app_main.cpp         Entry point: Matter node, endpoints, ModeSelect
+  app_driver.cpp/.h    Bridges Matter attributes to LED hardware
+  breathing.c/.h       LED animation engine (LEDC PWM, 5 patterns)
+  Kconfig.projbuild    Default animation config
+  idf_component.yml    ESP-Matter and button dependencies
+  CMakeLists.txt       Component registration
 CMakeLists.txt         Top-level ESP-IDF project file
-sdkconfig.defaults     ESP-IDF configuration overrides
-Dockerfile             Docker build environment
+sdkconfig.defaults     ESP-IDF / Matter configuration overrides
+partitions.csv         Flash partition table (OTA A/B scheme)
+Dockerfile             Docker build environment (ESP-IDF + ESP-Matter)
+docker-compose.yml     Docker Compose build service
 ```
 
-## Quick start (Docker — no local toolchain needed)
+## Build
 
 ```bash
-export WIFI_SSID="YourNetwork"
-export WIFI_PASS="YourPassword"
-
-docker compose build
+docker compose run --build build
 ```
 
-The firmware binary is at `build/moto.bin` inside the container.
+The merged flashable binary is output as `build/moto.bin`.
 
-## Local development
-
-### Prerequisites
-
-1. **ESP-IDF v5.5** — follow the
-   [install guide](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c5/get-started/index.html)
-2. Source the environment: `. $HOME/esp/esp-idf/export.sh`
-
-### Build & flash
+## Flash
 
 ```bash
-idf.py set-target esp32c5
-idf.py menuconfig   # set WiFi SSID/password under "Moto Configuration"
-idf.py build flash monitor
+esptool.py --chip esp32c5 --port /dev/cu.usbmodem* -b 460800 \
+  write_flash 0x0 build/moto.bin
 ```
 
-### Configure WiFi without menuconfig
+To monitor serial output after flashing:
 
 ```bash
-# Append to sdkconfig.defaults before building:
-echo 'CONFIG_MOTO_WIFI_SSID="YourNetwork"' >> sdkconfig.defaults
-echo 'CONFIG_MOTO_WIFI_PASS="YourPassword"' >> sdkconfig.defaults
-idf.py build
+idf.py monitor
 ```
 
 ## How it works
 
+### Matter device model
+
+The firmware creates a **Dimmable Light** endpoint with an additional
+**ModeSelect** cluster for animation switching:
+
+| Cluster      | Purpose                        |
+| ------------ | ------------------------------ |
+| OnOff        | Turn LED output on/off         |
+| LevelControl | Set brightness (0–254)         |
+| ModeSelect   | Choose animation pattern (0–4) |
+
 ### OTA update flow
 
-1. On boot, the firmware connects to WiFi and checks GitHub Releases for a
-   newer `moto.bin`.
-2. If found, it streams the binary into the inactive flash partition (A/B
-   scheme).
-3. After verification the device reboots into the new firmware.
-4. The new firmware marks itself as valid; if it fails to do so, the
-   bootloader automatically rolls back to the previous version.
+1. A Matter OTA Provider pushes a newer firmware image to the device.
+2. The image is streamed into the inactive flash partition (A/B scheme).
+3. After verification, the device reboots into the new firmware.
+4. If the new firmware fails to mark itself as valid, the bootloader
+   automatically rolls back to the previous version.
 
 ### Flash partition layout
 
 ```
-┌──────────────────────┐
-│  Bootloader          │
-├──────────────────────┤
-│  Partition Table     │
-├──────────────────────┤
-│  NVS (24 KB)         │  WiFi creds, config
-├──────────────────────┤
-│  OTA Data (8 KB)     │  Tracks active slot
-├──────────────────────┤
-│  PHY Init (4 KB)     │  WiFi/BT calibration
-├──────────────────────┤
-│  ota_0 (1600 KB)     │  App slot A
-├──────────────────────┤
-│  ota_1 (1600 KB)     │  App slot B
-└──────────────────────┘
+┌──────────────────────────┐
+│  Bootloader              │
+├──────────────────────────┤
+│  Partition Table         │
+├──────────────────────────┤
+│  Secure Cert (8 KB)      │  Device attestation
+├──────────────────────────┤
+│  NVS (48 KB)             │  Matter fabric & config
+├──────────────────────────┤
+│  NVS Keys (4 KB)         │  NVS encryption keys
+├──────────────────────────┤
+│  OTA Data (8 KB)         │  Tracks active slot
+├──────────────────────────┤
+│  PHY Init (4 KB)         │  WiFi/BT calibration
+├──────────────────────────┤
+│  ota_0 (1920 KB)         │  App slot A
+├──────────────────────────┤
+│  ota_1 (1920 KB)         │  App slot B
+├──────────────────────────┤
+│  Factory NVS (24 KB)     │  Factory data
+└──────────────────────────┘
 ```
 
 ### CI pipeline
 
 The GitHub Actions workflow (`.github/workflows/ci.yml`):
 
-1. **Build** — compiles firmware in the ESP-IDF Docker container
-2. **Publish** — uploads `moto.bin` to GitHub Releases (the OTA update source)
+1. **Release** — bumps version via conventional commits (`release-it`)
+2. **Publish builder** — builds and caches the ESP-IDF + ESP-Matter Docker image
+3. **Build** — compiles firmware and produces `moto.bin`
+4. **Publish** — uploads `moto.bin` to GitHub Releases
 
 ## License
 
 See [LICENSE](LICENSE).
-esptool.py --chip esp32c5 --port /dev/cu.usbmodem\* -b 460800 write_flash 0x0 build/firmware.bin
+
+Default pairing code: 34970112332
