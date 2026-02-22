@@ -12,6 +12,7 @@
 
 #include <app/server/Server.h>
 #include <app/server/CommissioningWindowManager.h>
+#include <app/clusters/mode-select-server/supported-modes-manager.h>
 
 using namespace esp_matter;
 using namespace esp_matter::attribute;
@@ -33,10 +34,37 @@ static const char *s_led_roles[LED_COUNT] = {
     "main light",
 };
 
-/* Vendor-specific cluster carrying the vehicle-light role (read-only string) */
-static constexpr uint32_t kRoleClusterId   = 0xFFF10001;
-static constexpr uint32_t kRoleAttributeId = 0x0000;
-static constexpr uint16_t kMaxRoleLen      = 32;
+/* ── Mode Select delegate: provides the role dropdown options ── */
+
+using ModeOption = ModeSelect::Structs::ModeOptionStruct::Type;
+
+static ModeOption s_role_modes[LED_COUNT] = {
+    {chip::CharSpan::fromCharString("left front indicator"),  0, {}},
+    {chip::CharSpan::fromCharString("right front indicator"), 1, {}},
+    {chip::CharSpan::fromCharString("left back indicator"),   2, {}},
+    {chip::CharSpan::fromCharString("right back indicator"),  3, {}},
+    {chip::CharSpan::fromCharString("taillight"),             4, {}},
+    {chip::CharSpan::fromCharString("main light"),            5, {}},
+};
+
+class RoleModesManager : public ModeSelect::SupportedModesManager {
+public:
+    ModeOptionsProvider getModeOptionsProvider(chip::EndpointId) const override {
+        return ModeOptionsProvider(s_role_modes, s_role_modes + LED_COUNT);
+    }
+
+    chip::Protocols::InteractionModel::Status
+    getModeOptionByMode(chip::EndpointId, uint8_t mode,
+                        const ModeOption **dataPtr) const override {
+        if (mode < LED_COUNT) {
+            *dataPtr = &s_role_modes[mode];
+            return chip::Protocols::InteractionModel::Status::Success;
+        }
+        return chip::Protocols::InteractionModel::Status::InvalidCommand;
+    }
+};
+
+static RoleModesManager s_role_modes_mgr;
 
 /* ── Matter event callback ── */
 
@@ -105,19 +133,6 @@ static esp_err_t app_attribute_update_cb(attribute::callback_type_t type, uint16
     return ESP_OK;
 }
 
-/* ── Add vendor-specific role cluster to an endpoint ── */
-
-static esp_err_t add_role_cluster(endpoint_t *ep, const char *role)
-{
-    cluster_t *cl = cluster::create(ep, kRoleClusterId, CLUSTER_FLAG_SERVER);
-    if (!cl)
-        return ESP_FAIL;
-
-    attribute::create(cl, kRoleAttributeId, ATTRIBUTE_FLAG_WRITABLE | ATTRIBUTE_FLAG_NONVOLATILE,
-                      esp_matter_char_str((char *)role, strlen(role)), kMaxRoleLen);
-    return ESP_OK;
-}
-
 /* ── entry point ── */
 
 extern "C" void app_main()
@@ -143,28 +158,60 @@ extern "C" void app_main()
         abort();
     }
 
-    /* Create one dimmable-light endpoint per LED */
+    /* Create one dimmable-light endpoint per LED.
+       Built manually (instead of dimmable_light::create) to omit the OnOff and
+       LevelControl Lighting features, which removes the StartUpOnOff and
+       StartUpCurrentLevel attributes and hides the "Power On Behavior" UI in
+       Matter controllers. */
     for (int i = 0; i < LED_COUNT; i++) {
-        dimmable_light::config_t light_config;
-        light_config.on_off.on_off                                  = true;
-        light_config.on_off_lighting.start_up_on_off                = nullable<uint8_t>();
-        light_config.level_control.current_level                    = nullable<uint8_t>(254);
-        light_config.level_control.on_level                         = nullable<uint8_t>(254);
-        light_config.level_control_lighting.start_up_current_level  = nullable<uint8_t>(254);
-
-        endpoint_t *endpoint = dimmable_light::create(node, &light_config, ENDPOINT_FLAG_NONE, NULL);
+        endpoint_t *endpoint = endpoint::create(node, ENDPOINT_FLAG_NONE, NULL);
         if (!endpoint) {
             ESP_LOGE(TAG, "Failed to create endpoint for LED %d (%s)", i, s_led_roles[i]);
             abort();
         }
 
+        cluster::descriptor::config_t desc_config;
+        cluster::descriptor::create(endpoint, &desc_config, CLUSTER_FLAG_SERVER);
+        add_device_type(endpoint, dimmable_light::get_device_type_id(),
+                        dimmable_light::get_device_type_version());
+
+        cluster::identify::config_t id_config;
+        id_config.identify_type = chip::to_underlying(Identify::IdentifyTypeEnum::kLightOutput);
+        cluster_t *id_cl = cluster::identify::create(endpoint, &id_config, CLUSTER_FLAG_SERVER);
+        cluster::identify::command::create_trigger_effect(id_cl);
+
+        cluster::groups::config_t grp_config;
+        cluster::groups::create(endpoint, &grp_config, CLUSTER_FLAG_SERVER);
+
+        cluster::on_off::config_t oo_config;
+        oo_config.on_off = false;
+        cluster_t *oo_cl = cluster::on_off::create(endpoint, &oo_config, CLUSTER_FLAG_SERVER);
+        cluster::on_off::command::create_on(oo_cl);
+        cluster::on_off::command::create_toggle(oo_cl);
+
+        cluster::level_control::config_t lc_config;
+        lc_config.current_level = nullable<uint8_t>(254);
+        lc_config.on_level      = nullable<uint8_t>(254);
+        cluster_t *lc_cl = cluster::level_control::create(endpoint, &lc_config, CLUSTER_FLAG_SERVER);
+        cluster::level_control::feature::on_off::add(lc_cl);
+        cluster::level_control::attribute::create_min_level(lc_cl, 1);
+        cluster::level_control::attribute::create_max_level(lc_cl, 254);
+
+        cluster::scenes_management::config_t sm_config;
+        cluster_t *sm_cl = cluster::scenes_management::create(endpoint, &sm_config, CLUSTER_FLAG_SERVER);
+        cluster::scenes_management::command::create_copy_scene(sm_cl);
+        cluster::scenes_management::command::create_copy_scene_response(sm_cl);
+
+        /* Mode Select cluster: role selector dropdown */
+        cluster::mode_select::config_t ms_config;
+        snprintf(ms_config.mode_select_description,
+                 sizeof(ms_config.mode_select_description), "Role");
+        ms_config.current_mode = static_cast<uint8_t>(i);
+        ms_config.delegate     = &s_role_modes_mgr;
+        cluster::mode_select::create(endpoint, &ms_config, CLUSTER_FLAG_SERVER);
+
         g_light_endpoint_ids[i] = endpoint::get_id(endpoint);
         ESP_LOGI(TAG, "LED %d (%s) -> endpoint %d", i, s_led_roles[i], g_light_endpoint_ids[i]);
-
-        err = add_role_cluster(endpoint, s_led_roles[i]);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "Failed to add role cluster to endpoint %d", g_light_endpoint_ids[i]);
-        }
 
         /* Brightness changes rapidly during transitions — defer NVS writes */
         attribute_t *level_attr = attribute::get(g_light_endpoint_ids[i],
