@@ -8,8 +8,12 @@ and the [ESP-Matter](https://github.com/espressif/esp-matter) SDK.
 ## Features
 
 - **6 independent Matter dimmable lights** — each LED is a separate endpoint
-  with its own on/off and brightness control, plus a writable `role` attribute
-  (e.g. "left front indicator", "taillight", "main light")
+  with its own on/off and brightness control, plus a **Mode Select** cluster
+  that exposes a selectable role dropdown (e.g. "left front indicator",
+  "taillight", "main light")
+- **Always-off power-on behavior** — all LEDs start off after every power
+  cycle; the OnOff Lighting feature is omitted so no `StartUpOnOff` attribute
+  is exposed and no "Power On Behavior" dropdown appears in Matter controllers
 - **Hardware LEDC PWM** with gamma correction for perceived-linear brightness
 - **WiFi 6** connectivity (dual-band 2.4 + 5 GHz)
 - **BLE commissioning** — pair with any Matter controller (Apple Home, Google
@@ -128,22 +132,22 @@ idf.py monitor
 The firmware creates **6 Dimmable Light** endpoints (one per LED). Each
 endpoint exposes:
 
-| Cluster             | Purpose                                   |
-| ------------------- | ----------------------------------------- |
-| OnOff               | Turn the individual LED on/off            |
-| LevelControl        | Set brightness (0–254)                    |
-| Custom `0xFFF10001` | Writable `role` string (max 32 bytes, persisted to NVS) |
+| Cluster             | Purpose                                            |
+| ------------------- | -------------------------------------------------- |
+| OnOff               | Turn the individual LED on/off                     |
+| LevelControl        | Set brightness (0–254)                             |
+| ModeSelect          | Selectable role dropdown (6 modes, one per role)   |
 
 Default role assignments (GPIO order):
 
-| GPIO | Default role          |
-| ---- | --------------------- |
-| 8    | left front indicator  |
-| 1    | right front indicator |
-| 3    | left back indicator   |
-| 4    | right back indicator  |
-| 5    | taillight             |
-| 6    | main light            |
+| GPIO | Mode | Role                   |
+| ---- | ---- | ---------------------- |
+| 8    | 0    | left front indicator   |
+| 1    | 1    | right front indicator  |
+| 3    | 2    | left back indicator    |
+| 4    | 3    | right back indicator   |
+| 5    | 4    | taillight              |
+| 6    | 5    | main light             |
 
 ### OTA update flow
 

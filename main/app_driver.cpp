@@ -51,13 +51,14 @@ esp_err_t app_driver_light_set_defaults(uint16_t endpoint_id)
     if (ch < 0)
         return ESP_ERR_INVALID_ARG;
 
+    led_set_channel_power(ch, false);
+
+    esp_matter_attr_val_t off_val = esp_matter_bool(false);
+    attribute::report(endpoint_id, OnOff::Id, OnOff::Attributes::OnOff::Id, &off_val);
+
     esp_matter_attr_val_t val = esp_matter_invalid(NULL);
-
-    attribute_t *attr = attribute::get(endpoint_id, OnOff::Id, OnOff::Attributes::OnOff::Id);
-    attribute::get_val(attr, &val);
-    led_set_channel_power(ch, val.val.b);
-
-    attr = attribute::get(endpoint_id, LevelControl::Id, LevelControl::Attributes::CurrentLevel::Id);
+    attribute_t *attr = attribute::get(endpoint_id, LevelControl::Id,
+                                       LevelControl::Attributes::CurrentLevel::Id);
     attribute::get_val(attr, &val);
     led_set_channel_brightness(ch, val.val.u8);
 
